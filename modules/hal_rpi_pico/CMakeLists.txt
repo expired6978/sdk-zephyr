@@ -2,13 +2,17 @@
 
 include(ExternalProject)
 
+function(pico_wrap_function FUNCNAME)
+  target_link_options(app INTERFACE "LINKER:--wrap=${FUNCNAME}")
+endfunction()
+
 if(CONFIG_HAS_RPI_PICO)
   zephyr_library()
 
   set(rp2_common_dir ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/rp2_common)
   set(rp2040_dir ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/rp2040)
   set(common_dir ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/common)
-  set(boot_stage_dir ${rp2_common_dir}/boot_stage2)
+  set(boot_stage_dir ${rp2040_dir}/boot_stage2)
 
   # The Second Stage Bootloader is only linked to the app that resides
   # at 0x100. Therefore, only if the app's offset is 0x100, the second
@@ -46,6 +50,8 @@ if(CONFIG_HAS_RPI_PICO)
       zephyr_library_sources(${rp2_bootloader_asm})
   endif()
 
+  zephyr_compile_definitions(PICO_RP2040)
+
   # Pico sources and headers necessary for every build.
   # These contain definitions and implementation used mostly for
   # initializing the SoC, and therefore are always required.
@@ -55,11 +61,12 @@ if(CONFIG_HAS_RPI_PICO)
     ${rp2_common_dir}/hardware_pll/pll.c
     ${rp2_common_dir}/hardware_xosc/xosc.c
     ${rp2_common_dir}/hardware_watchdog/watchdog.c
-    ${rp2_common_dir}/pico_platform/platform.c
     ${rp2_common_dir}/pico_bootrom/bootrom.c
+    ${rp2040_dir}/pico_platform/platform.c
   )
 
   zephyr_include_directories(
+    ${common_dir}/pico_base_headers/include
     ${rp2_common_dir}/hardware_base/include
     ${rp2_common_dir}/hardware_clocks/include
     ${rp2_common_dir}/hardware_watchdog/include
@@ -69,11 +76,18 @@ if(CONFIG_HAS_RPI_PICO)
     ${rp2_common_dir}/hardware_sync/include
     ${rp2_common_dir}/hardware_timer/include
     ${rp2_common_dir}/hardware_resets/include
+    ${rp2_common_dir}/hardware_boot_lock/include
+    ${rp2_common_dir}/hardware_ticks/include
+    ${rp2_common_dir}/hardware_sync_spin_lock/include
     ${rp2_common_dir}/pico_bootrom/include
+    ${rp2_common_dir}/pico_platform_compiler/include
+    ${rp2_common_dir}/pico_platform_sections/include
+    ${rp2_common_dir}/pico_platform_panic/include
+    ${common_dir}/boot_picoboot_headers/include
+    ${common_dir}/boot_picobin_headers/include
     ${rp2040_dir}/hardware_regs/include
     ${rp2040_dir}/hardware_structs/include
-    ${common_dir}/pico_base/include
-    ${rp2_common_dir}/pico_platform/include
+    ${rp2040_dir}/pico_platform/include
     ${CMAKE_CURRENT_LIST_DIR}
   )
 
@@ -108,15 +122,15 @@ if(CONFIG_HAS_RPI_PICO)
   zephyr_include_directories_ifdef(CONFIG_PICOSDK_USE_TIMER
           ${rp2_common_dir}/hardware_timer/include)
 
-  zephyr_library_sources_ifdef(CONFIG_PICOSDK_USE_CLAIM
-          ${rp2_common_dir}/hardware_claim/claim.c)
-  zephyr_include_directories_ifdef(CONFIG_PICOSDK_USE_CLAIM
-          ${rp2_common_dir}/hardware_claim/include)
-
   zephyr_library_sources_ifdef(CONFIG_PICOSDK_USE_RTC
           ${rp2_common_dir}/hardware_rtc/rtc.c)
   zephyr_include_directories_ifdef(CONFIG_PICOSDK_USE_RTC
           ${rp2_common_dir}/hardware_rtc/include)
+
+  zephyr_library_sources_ifdef(CONFIG_PICOSDK_USE_PIO
+          ${rp2_common_dir}/hardware_pio/pio.c)
+  zephyr_include_directories_ifdef(CONFIG_PICOSDK_USE_PIO
+          ${rp2_common_dir}/hardware_pio/include)
 
   # Some flash driver functions must be executed from the RAM.
   # Originally pico-sdk places them in the RW data section, so this
@@ -130,14 +144,98 @@ if(CONFIG_HAS_RPI_PICO)
     COMPILE_FLAGS $<TARGET_PROPERTY:compiler,warning_no_pointer_arithmetic>
   )
 
-  zephyr_library_sources_ifdef(CONFIG_PICOSDK_USE_PIO
-          ${rp2_common_dir}/hardware_pio/pio.c)
-  zephyr_include_directories_ifdef(CONFIG_PICOSDK_USE_PIO
-          ${rp2_common_dir}/hardware_pio/include)
-
   zephyr_library_sources_ifdef(CONFIG_PICOSDK_USE_CLAIM
-          ${rp2_common_dir}/hardware_claim/claim.c)
+          ${common_dir}/hardware_claim/claim.c)
   zephyr_include_directories_ifdef(CONFIG_PICOSDK_USE_CLAIM
-          ${rp2_common_dir}/hardware_claim/include)
+          ${common_dir}/hardware_claim/include)
+
+  if(CONFIG_PICOSDK_USE_ROM_MATH)
+    zephyr_library_sources(
+      # Hardware divider for improved performance
+      ${rp2_common_dir}/hardware_divider/divider.S
+      # Int64 ABI
+      ${rp2_common_dir}/pico_int64_ops/pico_int64_ops_aeabi.S
+    )
+
+    if(CONFIG_SOC_RP2040)
+    zephyr_library_sources(
+        # Float ABI
+        ${rp2_common_dir}/pico_float/float_init_rom_rp2040.c
+        ${rp2_common_dir}/pico_float/float_aeabi_rp2040.S
+        ${rp2_common_dir}/pico_float/float_v1_rom_shim_rp2040.S
+
+        # Double ABI
+        ${rp2_common_dir}/pico_double/double_init_rom_rp2040.c
+        ${rp2_common_dir}/pico_double/double_aeabi_rp2040.S
+        ${rp2_common_dir}/pico_double/double_v1_rom_shim_rp2040.S
+    )
+    endif()
+
+    zephyr_include_directories(
+      ${rp2_common_dir}/pico_float/include
+      ${rp2_common_dir}/pico_double/include
+      ${rp2_common_dir}/pico_int64_ops/include
+      ${rp2_common_dir}/hardware_divider/include
+      ${rp2_common_dir}/pico_runtime/include
+      ${rp2_common_dir}/pico_runtime_init/include
+    )
+
+    # The Pico implementations for the ABI functions have a
+    # __wrap_ prefix. To make the compiler call these functions,
+    # we need to tell the linker that they are wrapped. For example,
+    # calling the linker with "--wrap=__aeabi_fadd" will replace all
+    # calls to __aeabi_fadd with calls to __wrap___aeabi_fadd. This
+    # will call a wrapper that finds the implementation in ROM, and
+    # call it.
+    pico_wrap_function(__aeabi_fadd)
+    pico_wrap_function(__aeabi_fdiv)
+    pico_wrap_function(__aeabi_fmul)
+    pico_wrap_function(__aeabi_frsub)
+    pico_wrap_function(__aeabi_fsub)
+    pico_wrap_function(__aeabi_cfcmpeq)
+    pico_wrap_function(__aeabi_cfrcmple)
+    pico_wrap_function(__aeabi_cfcmple)
+    pico_wrap_function(__aeabi_fcmpeq)
+    pico_wrap_function(__aeabi_fcmplt)
+    pico_wrap_function(__aeabi_fcmple)
+    pico_wrap_function(__aeabi_fcmpge)
+    pico_wrap_function(__aeabi_fcmpgt)
+    pico_wrap_function(__aeabi_fcmpun)
+    pico_wrap_function(__aeabi_i2f)
+    pico_wrap_function(__aeabi_l2f)
+    #pico_wrap_function(__aeabi_ui2f) # Needs fixing, linker jumping too far?
+    pico_wrap_function(__aeabi_ul2f)
+    #pico_wrap_function(__aeabi_f2iz) # Needs fixing, linker jumping too far?
+    pico_wrap_function(__aeabi_f2lz)
+    pico_wrap_function(__aeabi_f2uiz)
+    pico_wrap_function(__aeabi_f2ulz)
+    pico_wrap_function(__aeabi_f2d)
+
+    pico_wrap_function(__aeabi_dadd)
+    pico_wrap_function(__aeabi_ddiv)
+    pico_wrap_function(__aeabi_dmul)
+    pico_wrap_function(__aeabi_drsub)
+    pico_wrap_function(__aeabi_dsub)
+    pico_wrap_function(__aeabi_cdcmpeq)
+    pico_wrap_function(__aeabi_cdrcmple)
+    pico_wrap_function(__aeabi_cdcmple)
+    pico_wrap_function(__aeabi_dcmpeq)
+    pico_wrap_function(__aeabi_dcmplt)
+    pico_wrap_function(__aeabi_dcmple)
+    pico_wrap_function(__aeabi_dcmpge)
+    pico_wrap_function(__aeabi_dcmpgt)
+    pico_wrap_function(__aeabi_dcmpun)
+    pico_wrap_function(__aeabi_i2d)
+    pico_wrap_function(__aeabi_l2d)
+    pico_wrap_function(__aeabi_ui2d)
+    pico_wrap_function(__aeabi_ul2d)
+    pico_wrap_function(__aeabi_d2iz)
+    pico_wrap_function(__aeabi_d2lz)
+    pico_wrap_function(__aeabi_d2uiz)
+    pico_wrap_function(__aeabi_d2ulz)
+    pico_wrap_function(__aeabi_d2f)
+
+    pico_wrap_function(__aeabi_lmul)
+  endif()
 
 endif()
