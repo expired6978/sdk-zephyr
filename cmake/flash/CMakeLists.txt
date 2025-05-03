@@ -88,6 +88,11 @@ function(create_runners_yaml)
     runners_yaml_append("- ${runner}")
   endforeach()
 
+  zephyr_get(BOARD_FLASH_RUNNER)
+  zephyr_get(BOARD_DEBUG_RUNNER)
+  zephyr_get(BOARD_SIM_RUNNER)
+  zephyr_get(BOARD_ROBOT_RUNNER)
+
   if(DEFINED BOARD_FLASH_RUNNER)
     runners_yaml_append("\n# Default flash runner if --runner is not given.")
     runners_yaml_append("flash-runner: ${BOARD_FLASH_RUNNER}")
