@@ -19,6 +19,10 @@
 #include <hardware/watchdog.h>
 #include <hardware/resets.h>
 
+#ifdef CONFIG_TIMER_READS_ITS_FREQUENCY_AT_RUNTIME
+extern int z_clock_hw_cycles_per_sec;
+#endif
+
 /* Undefine to prevent conflicts with header definitions */
 #undef pll_sys
 #undef pll_usb
@@ -569,6 +573,69 @@ static int clock_control_rpi_pico_get_rate(const struct device *dev, clock_contr
 	return 0;
 }
 
+#ifdef CONFIG_TIMER_READS_ITS_FREQUENCY_AT_RUNTIME
+static int clock_control_rpi_pico_set_rate(const struct device *dev, clock_control_subsys_t sys,
+	clock_control_subsys_rate_t rate)
+{
+#if 0
+	struct clock_control_rpi_pico_config *config = __DECONST(struct clock_control_rpi_pico_config *, dev->config);
+#endif
+	enum rpi_pico_clkid clkid = (enum rpi_pico_clkid)sys;
+
+	if (rpi_pico_is_valid_clock_index(clkid) < 0) {
+		return -EINVAL;
+	}
+
+	uint32_t clk_rate = (uint32_t)rate;
+
+	if(clkid == rpi_pico_clkid_clk_sys)
+	{
+		uint vco_freq, post_div1, post_div2;
+		if(!check_sys_clock_hz(clk_rate, &vco_freq, &post_div1, &post_div2))
+		{
+			return -ENOTSUP;
+		}
+
+		uint32_t freq = vco_freq / (post_div1 * post_div2);
+#if 0
+		// Alter the pll sys clk
+		struct rpi_pico_pll_config* pll = &config->plls_data[RPI_PICO_PLL_SYS];
+		pll->fb_div = vco_freq / CLOCK_FREQ_xosc;
+		pll->post_div1 = post_div1;
+		pll->post_div2 = post_div2;
+		
+		// Set ref clk to XOSC
+		struct rpi_pico_clk_config* ref = &config->clocks_data[RPI_PICO_CLKID_CLK_REF];
+		ref->source = CLOCKS_CLK_REF_CTRL_SRC_VALUE_XOSC_CLKSRC;
+		ref->aux_source = 0;
+		ref->source_rate = CLOCK_FREQ_xosc;
+		ref->rate = CLOCK_FREQ_xosc;
+
+		// Revert clk sys to pll
+		struct rpi_pico_clk_config* sys_cfg = &config->clocks_data[RPI_PICO_CLKID_CLK_SYS];
+		sys_cfg->source = CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLKSRC_CLK_SYS_AUX;
+		sys_cfg->aux_source = CLOCKS_CLK_SYS_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS;
+		sys_cfg->rate = freq;
+		sys_cfg->source_rate = freq;
+
+		// Revert peri clk to pll_usb
+		struct rpi_pico_clk_config* peri_cfg = &config->clocks_data[RPI_PICO_CLKID_CLK_PERI];
+		peri_cfg->source = 0;
+		peri_cfg->aux_source = CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB;
+		peri_cfg->rate = USB_CLK_HZ;
+		peri_cfg->source_rate = USB_CLK_HZ;
+#endif
+
+		set_sys_clock_pll(vco_freq, post_div1, post_div2);
+
+		z_clock_hw_cycles_per_sec = freq;
+		return 0;
+	}
+
+	return -EINVAL;
+}
+#endif
+
 void rpi_pico_clkid_tuple_swap(struct rpi_pico_clkid_tuple *lhs, struct rpi_pico_clkid_tuple *rhs)
 {
 	struct rpi_pico_clkid_tuple tmp = *lhs;
@@ -726,6 +793,9 @@ static const struct clock_control_driver_api clock_control_rpi_pico_api = {
 	.off = clock_control_rpi_pico_off,
 	.get_rate = clock_control_rpi_pico_get_rate,
 	.get_status = clock_control_rpi_pico_get_status,
+#ifdef CONFIG_TIMER_READS_ITS_FREQUENCY_AT_RUNTIME
+	.set_rate = clock_control_rpi_pico_set_rate,
+#endif
 };
 
 BUILD_ASSERT((VCO_FREQ(pll_sys) >= PLL_VCO_FREQ_MIN) && (VCO_FREQ(pll_sys) <= PLL_VCO_FREQ_MAX) &&
