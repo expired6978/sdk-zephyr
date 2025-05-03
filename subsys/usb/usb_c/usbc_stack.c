@@ -33,7 +33,7 @@ static ALWAYS_INLINE void usbc_handler(void *port_dev)
 	prl_run(dev);
 	tc_run(dev, request);
 
-	if (request == PRIV_PORT_REQUEST_SUSPEND) {
+	if (request == PRIV_PORT_REQUEST_SUSPEND || request == PRIV_PORT_REQUEST_PAUSE) {
 		k_thread_suspend(port->port_thread);
 	}
 
@@ -86,6 +86,7 @@ static ALWAYS_INLINE void usbc_handler(void *port_dev)
                                                                                                    \
 	static const struct usbc_port_config usbc_port_config_##inst = {                           \
 		.create_thread = create_thread_##inst,                                             \
+		.rev = DT_INST_ENUM_IDX_OR(inst, rev, PD_REV30),                                   \
 	};                                                                                         \
                                                                                                    \
 	DEVICE_DT_INST_DEFINE(inst, &usbc_subsys_init, NULL, &usbc_port_data_##inst,               \
@@ -123,6 +124,33 @@ int usbc_suspend(const struct device *dev)
 	k_fifo_put(&data->request_fifo, &data->request);
 
 	return 0;
+}
+
+/**
+ * @brief Called by the Device Policy Manager to resume the USB-C Subsystem
+ */
+int usbc_resume(const struct device *dev)
+{
+       struct usbc_port_data *data = dev->data;
+
+       /* Start the port thread */
+       k_thread_resume(data->port_thread);
+
+       return 0;
+}
+
+/**
+ * @brief Called by the Device Policy Manager to pause the USB-C Subsystem
+ */
+int usbc_pause(const struct device *dev)
+{
+       struct usbc_port_data *data = dev->data;
+
+       /* Add private suspend request to fifo */
+       data->request.val = PRIV_PORT_REQUEST_PAUSE;
+       k_fifo_put(&data->request_fifo, &data->request);
+
+       return 0;
 }
 
 /**

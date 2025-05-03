@@ -69,9 +69,7 @@ static void sink_power_sub_states(const struct device *dev)
 
 	/* Notify DPM of sink sub-state power change */
 	if (atomic_test_and_clear_bit(&tc->flags, TC_FLAGS_RP_SUBSTATE_CHANGE)) {
-		if (data->policy_cb_notify) {
-			data->policy_cb_notify(dev, dpm_pwr_change_notify);
-		}
+		policy_notify(dev, dpm_pwr_change_notify);
 	}
 }
 
@@ -81,8 +79,10 @@ static void sink_power_sub_states(const struct device *dev)
 void tc_unattached_snk_entry(void *obj)
 {
 	struct tc_sm_t *tc = (struct tc_sm_t *)obj;
+	const struct device *dev = tc->dev;
 
 	LOG_INF("Unattached.SNK");
+	policy_notify(dev, PD_DISCONNECTED);
 
 	/*
 	 * Allow the state machine to immediately check the state of CC lines and go into

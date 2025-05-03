@@ -125,6 +125,8 @@ enum usbc_policy_notify_t {
 	SENDER_RESPONSE_TIMEOUT,
 	/** Source Capabilities Received */
 	SOURCE_CAPABILITIES_RECEIVED,
+	/** Disconnected */
+	PD_DISCONNECTED,
 };
 
 /**
@@ -334,6 +336,15 @@ typedef int (*policy_cb_src_en_t)(const struct device *dev, bool en);
 int usbc_start(const struct device *dev);
 
 /**
+ * @brief Resume the USB-C Subsystem
+ *
+ * @param dev Runtime device structure
+ *
+ * @retval 0 on success
+ */
+int usbc_resume(const struct device *dev);
+
+/**
  * @brief Suspend the USB-C Subsystem
  *
  * @param dev Runtime device structure
@@ -341,6 +352,15 @@ int usbc_start(const struct device *dev);
  * @retval 0 on success
  */
 int usbc_suspend(const struct device *dev);
+
+/**
+ * @brief Pause the USB-C Subsystem
+ *
+ * @param dev Runtime device structure
+ *
+ * @retval 0 on success
+ */
+int usbc_pause(const struct device *dev);
 
 /**
  * @brief Make a request of the USB-C Subsystem

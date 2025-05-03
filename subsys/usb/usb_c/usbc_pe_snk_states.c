@@ -189,6 +189,7 @@ void pe_snk_evaluate_capability_entry(void *obj)
 {
 	struct policy_engine *pe = (struct policy_engine *)obj;
 	const struct device *dev = pe->dev;
+	const struct usbc_port_config *cfg = dev->config;
 	struct usbc_port_data *data = dev->data;
 	struct protocol_layer_rx_t *prl_rx = data->prl_rx;
 	union pd_header header;
@@ -206,7 +207,7 @@ void pe_snk_evaluate_capability_entry(void *obj)
 	pe->hard_reset_counter = 0;
 
 	/* Set to highest revision supported by both ports */
-	prl_set_rev(dev, PD_PACKET_SOP, MIN(PD_REV30, header.specification_revision));
+	prl_set_rev(dev, PD_PACKET_SOP, MIN(cfg->rev, header.specification_revision));
 
 	/* Send source caps to Device Policy Manager for saving */
 	policy_set_src_cap(dev, pdos, num_pdo_objs);
@@ -431,6 +432,11 @@ void pe_snk_ready_run(void *obj)
 			switch (header.message_type) {
 			case PD_DATA_SOURCE_CAP:
 				pe_set_state(dev, PE_SNK_EVALUATE_CAPABILITY);
+				break;
+			case PD_DATA_VENDOR_DEF:
+				/* For PD3 send not supported, REV2 ignore */
+				if(prl_get_rev(dev, PD_PACKET_SOP) > PD_REV20)
+					pe_set_state(dev, PE_SEND_NOT_SUPPORTED);
 				break;
 			default:
 				pe_set_state(dev, PE_SEND_NOT_SUPPORTED);

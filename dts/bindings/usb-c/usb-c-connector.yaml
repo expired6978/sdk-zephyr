@@ -69,6 +69,15 @@ properties:
     description: |
       The Port power role. "dual" for Dual Role Port.
 
+  rev:
+    type: string
+    enum:
+      - "rev1"
+      - "rev2"
+      - "rev3"
+    description: |
+      The maximum PD Revision this port supports
+
   try-power-role:
     type: string
     enum:

@@ -16,6 +16,7 @@
 
 #define PRIV_PORT_REQUEST_SUSPEND -1
 #define PRIV_PORT_REQUEST_START	  -2
+#define PRIV_PORT_REQUEST_PAUSE	  -3
 
 /**
  * @brief Each layer of the stack is composed of state machines that can be
@@ -41,6 +42,9 @@ struct usbc_port_config {
 	void (*create_thread)(const struct device *dev);
 	/** The thread stack for this port's thread */
 	k_thread_stack_t *stack;
+	
+	/* PD Revision for this port */
+	enum pd_rev_type rev;
 };
 
 /**
